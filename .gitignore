@@ -1,0 +1,4 @@
+/target
+/web/*
+/.cargo
+!/web/index.html
