@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use eframe::egui::{self, Pos2};
-use egui::{Align2, Color32, FontId, TextEdit};
+use egui::{Align2, Color32, FontId};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
@@ -32,7 +32,7 @@ pub struct GobangApp {
     // Config
     role: &'static str,
     role_black: bool,
-    depth: String,
+    depth: usize,
 }
 impl GobangApp {
     pub fn new() -> Self {
@@ -45,7 +45,7 @@ impl GobangApp {
 
             role: "BLACK",
             role_black: true,
-            depth: String::from("2"),
+            depth: 2,
         }
     }
 }
@@ -53,35 +53,26 @@ impl eframe::App for GobangApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.state == AppState::Idle {
-                ui.vertical_centered(|ui| {
-                    ui.vertical_centered(|ui| {
-                        ui.label("You");
-                        if ui.button(self.role).clicked() {
-                            self.role = if self.role == "BLACK" {
-                                "WHITE"
-                            } else {
-                                "BLACK"
-                            }
-                        }
-                    });
-                    ui.vertical_centered(|ui| {
-                        ui.label("Recurse Depth(less than 10)");
-                        let text_edit = TextEdit::singleline(&mut self.depth)
-                            .desired_width(20.0)
-                            .char_limit(1);
-                        text_edit.show(ui);
-                    });
-                    if ui.button("Start Game").clicked() {
-                        self.state = AppState::Gaming;
-                        if self.role == "BLACK" {
-                            self.role_black = true;
-                        } else {
-                            self.role_black = false;
-                            self.board[7][7] = 1;
-                            self.ai.lock().unwrap().ai_step(7, 7);
-                        }
+                ui.label("You");
+                if ui.button(self.role).clicked() {
+                    self.role = if self.role == "BLACK" {
+                        "WHITE"
+                    } else {
+                        "BLACK"
                     }
-                });
+                }
+                ui.add(egui::Slider::new(&mut self.depth, 1..=2).text("recurse depth"));
+                if ui.button("Start Game").clicked() {
+                    self.state = AppState::Gaming;
+                    self.ai.lock().unwrap().depth = self.depth;
+                    if self.role == "BLACK" {
+                        self.role_black = true;
+                    } else {
+                        self.role_black = false;
+                        self.board[7][7] = 1;
+                        self.ai.lock().unwrap().ai_step(7, 7);
+                    }
+                }
                 return;
             }
             let (_, response) = ui.allocate_at_least(
@@ -209,8 +200,8 @@ impl eframe::App for GobangApp {
                 );
             } else if self.state == AppState::Settlement {
                 let text = match self.ai.lock().unwrap().state {
-                    GameState::Human => Some("HUMAN WINS"),
-                    GameState::AI => Some("AI WINS"),
+                    GameState::Human => Some(format!("HUMAN WINS DEPTH {}", self.depth)),
+                    GameState::AI => Some(format!("AI WINS DEPTH {}", self.depth)),
                     _ => None,
                 };
                 if let Some(text) = text {

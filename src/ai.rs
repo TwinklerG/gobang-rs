@@ -28,6 +28,7 @@ pub struct AI {
     search_cnt: usize,
 
     pub state: GameState,
+    pub depth: usize,
 }
 
 const SHAPE_SCORE: &[(i32, &[usize])] = &[
@@ -65,13 +66,14 @@ impl AI {
             search_cnt: 0,
             cut_cnt: 0,
             state: GameState::Idle,
+            depth: DEPTH,
         }
     }
 
     pub fn ai(&mut self) -> (usize, usize) {
         self.cut_cnt = 0;
         self.search_cnt = 0;
-        self.negamax(true, DEPTH, i32::MIN >> 1, i32::MAX >> 1);
+        self.negamax(true, self.depth, i32::MIN >> 1, i32::MAX >> 1);
         self.ai_steps.push(self.next_step);
         self.ai_steps_st.insert(self.next_step);
         self.all_steps.push(self.next_step);
@@ -131,7 +133,7 @@ impl AI {
             self.all_steps_st.remove(&(tx, ty));
             if value > alpha {
                 // println!("{};alpha:{};beta:{}", value, alpha, beta);
-                if depth == DEPTH {
+                if depth == self.depth {
                     self.next_step = (tx, ty);
                 }
                 if value >= beta {
