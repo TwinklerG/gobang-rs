@@ -1,0 +1,50 @@
+name: Build and Deploy to GitHub Pages
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Step 2: Set up Rust environment
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      # Step 3: Install wasm-bindgen CLI, wasm32-unknown-unknown target
+      - name: Install wasm-bindgen-cli
+        run: |
+          cargo install wasm-bindgen-cli
+          rustup target add wasm32-unknown-unknown
+
+      # Step 4: Build the project for wasm32 target
+      - name: Build with cargo
+        run: cargo build --target wasm32-unknown-unknown --release
+
+      # Step 5: Run wasm-bindgen to generate JS bindings
+      - name: Generate JS bindings with wasm-bindgen
+        run: wasm-bindgen ./target/wasm32-unknown-unknown/release/gobang-rs.wasm --out-dir ./web --target web
+
+      # Step 6: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          # The directory to deploy
+          publish_dir: ./web
+          # GitHub Pages branch
+          publish_branch: gh-pages
+          # Optionally, you can customize your commit message
+          commit_message: "Deploy WebAssembly build to GitHub Pages"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
