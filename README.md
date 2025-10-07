@@ -1,14 +1,40 @@
-<h1 align="center">Gobang-rs</h1>
+<h1 align="center">gobang-rs</h1>
 
-## Quick Start
+Yet another gobang game based on egui(rust), supporting multiple platforms, including desktop and web.
+
+Main Algorithms: **game tree**, **minmax**, **alpha-beta pruning**, **zobrist**.
+
+## 📷 Screenshots
+
+**basic configurations**
+
+![basic configurations](README.assets/img0.png)
+
+**gaming**
+
+![gaming](./README.assets/img2.png)
+
+**settlement**
+
+![settlement](./README.assets/img1.png)
+
+**on web**
+
+![on web](./README.assets/img3.png)
+
+## 🚀 Quick Start
+
+A Rust environment is necessary. [Rustup](https://rust-lang.org/learn/get-started/) is highly recommended.
 
 ### Desktop
 
 ```shell
-cargo run
+cargo run --release
 ```
 
 ### WebAssembly
+
+You can change `python3 -m http.server` to any type of web server according to your preferences.
 
 ```shell
 cargo build --target wasm32-unknown-unknown --release # rustup target add wasm32-unknown-unknown

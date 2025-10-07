@@ -1,8 +1,8 @@
 use log::info;
-use std::{
-    collections::{HashMap, HashSet},
-    hash::{DefaultHasher, Hash, Hasher},
-};
+use rand::Rng;
+use std::collections::{HashMap, HashSet};
+
+use crate::gui::BOARD_SIZE;
 
 const DEPTH: usize = 2;
 const COLUMN: usize = 15;
@@ -15,6 +15,44 @@ pub enum GameState {
     Idle,
     Human,
     AI,
+}
+
+#[derive(Debug)]
+struct GobangZobrist {
+    black: [[u32; BOARD_SIZE]; BOARD_SIZE],
+    white: [[u32; BOARD_SIZE]; BOARD_SIZE],
+    hash: u32,
+}
+
+impl GobangZobrist {
+    pub fn new() -> Self {
+        let mut black = [[0; BOARD_SIZE]; BOARD_SIZE];
+        let mut white = [[0; BOARD_SIZE]; BOARD_SIZE];
+        let mut rng = rand::rng();
+        for i in 0..BOARD_SIZE {
+            for j in 0..BOARD_SIZE {
+                black[i][j] = rng.random::<u32>();
+                white[i][j] = rng.random::<u32>();
+            }
+        }
+        GobangZobrist {
+            black,
+            white,
+            hash: 0,
+        }
+    }
+
+    pub fn update(&mut self, x: usize, y: usize, is_black: bool) {
+        self.hash ^= if is_black {
+            self.black[x][y]
+        } else {
+            self.white[x][y]
+        };
+    }
+
+    pub fn get_hash(&self) -> u32 {
+        self.hash
+    }
 }
 
 #[derive(Debug)]
@@ -35,7 +73,10 @@ pub struct AI {
     pub state: GameState,
     pub depth: usize,
 
-    evaluation_cache: HashMap<u64, i32>,
+    pub ai_black: bool,
+    zobrist: GobangZobrist,
+    evaluation_cache_black: HashMap<u32, i32>,
+    evaluation_cache_white: HashMap<u32, i32>,
 }
 
 const SHAPE_SCORE: &[(i32, &[usize])] = &[
@@ -58,8 +99,8 @@ const SHAPE_SCORE: &[(i32, &[usize])] = &[
 
 impl AI {
     pub fn new() -> AI {
-        let full_steps: HashSet<(usize, usize)> = (0..=ROW)
-            .flat_map(|i| (0..=COLUMN).map(move |j| (i, j)))
+        let full_steps: HashSet<(usize, usize)> = (0..ROW)
+            .flat_map(|i| (0..COLUMN).map(move |j| (i, j)))
             .collect();
         Self {
             ai_steps: Vec::new(),
@@ -75,7 +116,10 @@ impl AI {
             cache_hit: 0,
             state: GameState::Idle,
             depth: DEPTH,
-            evaluation_cache: HashMap::new(),
+            zobrist: GobangZobrist::new(),
+            ai_black: false,
+            evaluation_cache_black: HashMap::new(),
+            evaluation_cache_white: HashMap::new(),
         }
     }
 
@@ -85,13 +129,10 @@ impl AI {
         self.cache_hit = 0;
         self.negamax(true, self.depth, i32::MIN >> 1, i32::MAX >> 1);
         info!(
-            "search count: {}; cut cnt: {}; cache hit: {}",
+            "search count: {}; cut count: {}; cache hit: {}",
             self.search_cnt, self.cut_cnt, self.cache_hit
         );
-        self.ai_steps.push(self.next_step);
-        self.ai_steps_st.insert(self.next_step);
-        self.all_steps.push(self.next_step);
-        self.all_steps_st.insert(self.next_step);
+        self.ai_step(self.next_step.0, self.next_step.1);
         self.next_step
     }
 
@@ -100,6 +141,7 @@ impl AI {
         self.human_steps_st.insert((x, y));
         self.all_steps.push((x, y));
         self.all_steps_st.insert((x, y));
+        self.zobrist.update(x, y, !self.ai_black);
     }
 
     pub fn ai_step(&mut self, x: usize, y: usize) {
@@ -107,17 +149,18 @@ impl AI {
         self.ai_steps_st.insert((x, y));
         self.all_steps.push((x, y));
         self.all_steps_st.insert((x, y));
+        self.zobrist.update(x, y, self.ai_black);
     }
 
     fn negamax(&mut self, is_ai: bool, depth: usize, mut alpha: i32, beta: i32) -> i32 {
-        if AI::game_win(&self.ai_steps_st) || AI::game_win(&self.human_steps_st) || depth == 0 {
-            return self.evalution(is_ai);
-        }
         let mut blank_steps: Vec<(usize, usize)> = self
             .full_steps
             .difference(&self.all_steps_st)
             .copied()
             .collect();
+        if AI::game_win(&self.ai_steps_st) || AI::game_win(&self.human_steps_st) || depth == 0 {
+            return self.evalution(is_ai, HashSet::from_iter(blank_steps.iter()));
+        }
         self.order(&mut blank_steps);
         for (tx, ty) in blank_steps {
             self.search_cnt += 1;
@@ -126,21 +169,19 @@ impl AI {
                 continue;
             }
             if is_ai {
-                self.ai_steps.push((tx, ty));
-                self.ai_steps_st.insert((tx, ty));
+                self.ai_step(tx, ty);
             } else {
-                self.human_steps.push((tx, ty));
-                self.human_steps_st.insert((tx, ty));
+                self.human_step(tx, ty);
             }
-            self.all_steps.push((tx, ty));
-            self.all_steps_st.insert((tx, ty));
             let value = -self.negamax(!is_ai, depth - 1, -beta, -alpha);
             if is_ai {
                 self.ai_steps.pop();
                 self.ai_steps_st.remove(&(tx, ty));
+                self.zobrist.update(tx, ty, self.ai_black);
             } else {
                 self.human_steps.pop();
                 self.human_steps_st.remove(&(tx, ty));
+                self.zobrist.update(tx, ty, !self.ai_black);
             }
             self.all_steps.pop();
             self.all_steps_st.remove(&(tx, ty));
@@ -160,109 +201,109 @@ impl AI {
         alpha
     }
 
-    fn evalution(&mut self, is_ai: bool) -> i32 {
-        let my_list = if is_ai {
+    fn evalution(&mut self, is_ai: bool, blank_steps_st: HashSet<&(usize, usize)>) -> i32 {
+        let my_steps = if is_ai {
             &self.ai_steps
         } else {
             &self.human_steps
         };
-        let enemy_list = if is_ai {
+        let my_steps_st = HashSet::from_iter(my_steps.iter());
+        let enemy_steps = if is_ai {
             &self.human_steps
         } else {
             &self.ai_steps
         };
-        let mut hash = 0;
-        if self.depth > 2 {
-            let my_st = if is_ai {
-                &self.ai_steps_st
-            } else {
-                &self.human_steps_st
-            };
-            let enemy_st = if is_ai {
-                &self.human_steps_st
-            } else {
-                &self.ai_steps_st
-            };
-            let mut hasher = DefaultHasher::new();
-            for item in my_st {
-                item.hash(&mut hasher);
-            }
-            for item in enemy_st {
-                item.hash(&mut hasher);
-            }
-            hash = hasher.finish();
-            if let Some(score) = self.evaluation_cache.get(&hash) {
+        let enemy_steps_st = HashSet::from_iter(enemy_steps.iter());
+        if (is_ai && self.ai_black) || (!is_ai && !self.ai_black) {
+            if let Some(val) = self.evaluation_cache_black.get(&self.zobrist.get_hash()) {
                 self.cache_hit += 1;
-                return *score;
+                return *val;
             }
+        } else if let Some(val) = self.evaluation_cache_white.get(&self.zobrist.get_hash()) {
+            self.cache_hit += 1;
+            return *val;
         }
         let mut my_score_all_arr: TypeScoreAllArr = Vec::new();
         let mut my_score = 0;
-        for (x, y) in my_list {
+        for (x, y) in my_steps {
             my_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (0, 1),
-                HashSet::from_iter(my_list.iter()),
-                HashSet::from_iter(enemy_list.iter()),
+                &my_steps_st,
+                &enemy_steps_st,
+                &blank_steps_st,
                 &mut my_score_all_arr,
             );
             my_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (1, 0),
-                HashSet::from_iter(my_list.iter()),
-                HashSet::from_iter(enemy_list.iter()),
+                &my_steps_st,
+                &enemy_steps_st,
+                &blank_steps_st,
                 &mut my_score_all_arr,
             );
             my_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (1, 1),
-                HashSet::from_iter(my_list.iter()),
-                HashSet::from_iter(enemy_list.iter()),
+                &my_steps_st,
+                &enemy_steps_st,
+                &blank_steps_st,
                 &mut my_score_all_arr,
             );
             my_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (1, -1),
-                HashSet::from_iter(my_list.iter()),
-                HashSet::from_iter(enemy_list.iter()),
+                &my_steps_st,
+                &enemy_steps_st,
+                &blank_steps_st,
                 &mut my_score_all_arr,
             );
         }
 
         let mut enemy_score = 0;
         let mut enemy_score_all_arr: TypeScoreAllArr = Vec::new();
-        for (x, y) in enemy_list {
+        for (x, y) in enemy_steps {
             enemy_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (0, 1),
-                HashSet::from_iter(enemy_list.iter()),
-                HashSet::from_iter(my_list.iter()),
+                &enemy_steps_st,
+                &my_steps_st,
+                &blank_steps_st,
                 &mut enemy_score_all_arr,
             );
             enemy_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (1, 0),
-                HashSet::from_iter(enemy_list.iter()),
-                HashSet::from_iter(my_list.iter()),
+                &enemy_steps_st,
+                &my_steps_st,
+                &blank_steps_st,
                 &mut enemy_score_all_arr,
             );
             enemy_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (1, 1),
-                HashSet::from_iter(enemy_list.iter()),
-                HashSet::from_iter(my_list.iter()),
+                &enemy_steps_st,
+                &my_steps_st,
+                &blank_steps_st,
                 &mut enemy_score_all_arr,
             );
             enemy_score += self.cal_score(
                 (*x as i32, *y as i32),
                 (1, -1),
-                HashSet::from_iter(enemy_list.iter()),
-                HashSet::from_iter(my_list.iter()),
+                &enemy_steps_st,
+                &my_steps_st,
+                &blank_steps_st,
                 &mut enemy_score_all_arr,
             );
         }
         let ret = (my_score as f32 - enemy_score as f32 * 0.1) as i32;
-        self.evaluation_cache.insert(hash, ret);
+        if (is_ai && self.ai_black) || (!is_ai && !self.ai_black) {
+            self.evaluation_cache_black
+                .insert(self.zobrist.get_hash(), ret);
+        } else {
+            self.evaluation_cache_white
+                .insert(self.zobrist.get_hash(), ret);
+        }
         ret
     }
 
@@ -270,8 +311,9 @@ impl AI {
         &self,
         (x, y): (i32, i32),
         (dx, dy): (i32, i32),
-        my_steps_st: HashSet<&(usize, usize)>,
-        enemy_steps_st: HashSet<&(usize, usize)>,
+        my_steps_st: &HashSet<&(usize, usize)>,
+        enemy_steps_st: &HashSet<&(usize, usize)>,
+        blank_steps_st: &HashSet<&(usize, usize)>,
         score_all_arr: &mut TypeScoreAllArr,
     ) -> i32 {
         for (_, shape, delta) in score_all_arr.iter() {
@@ -295,6 +337,12 @@ impl AI {
                     (y + (d + offset) * dy) as usize,
                 )) {
                     pos.push(1);
+                } else if !blank_steps_st.contains(&(
+                    (x + (d + offset) * dx) as usize,
+                    (y + (d + offset) * dy) as usize,
+                )) {
+                    // Illegal
+                    pos.push(3);
                 } else {
                     pos.push(0);
                 }

@@ -14,7 +14,7 @@ use crate::{
     ai::{AI, GameState},
 };
 
-const BOARD_SIZE: usize = 15;
+pub const BOARD_SIZE: usize = 15;
 
 #[derive(PartialEq, Eq)]
 enum AppState {
@@ -86,12 +86,14 @@ impl eframe::App for GobangApp {
                 if ui.button("Start Game").clicked() {
                     self.state = AppState::Gaming;
                     self.ai.lock().unwrap().depth = self.depth;
+                    self.ai.lock().unwrap().ai_black = !self.role_black;
                     if self.role == "BLACK" {
                         self.role_black = true;
                     } else {
                         self.role_black = false;
                         self.board[7][7] = 1;
                         self.ai.lock().unwrap().ai_step(7, 7);
+                        self.last_step = Some((7, 7));
                     }
                 }
                 return;
@@ -139,7 +141,7 @@ impl eframe::App for GobangApp {
                                 (x - grid_size / 2) / grid_size,
                                 (y - grid_size / 2) / grid_size,
                             );
-                            if self.board[x][y] == 0 {
+                            if (x < BOARD_SIZE || y < BOARD_SIZE) && self.board[x][y] == 0 {
                                 self.board[x][y] = if self.role_black { 1 } else { 2 };
                                 self.last_step = Some((x, y));
                                 self.ai.lock().unwrap().human_step(x, y);
@@ -156,10 +158,12 @@ impl eframe::App for GobangApp {
                                         }));
                                     }
                                     #[cfg(not(target_arch = "wasm32"))]
-                                    tokio::task::spawn(async move {
-                                        let (nx, ny) = ai.lock().unwrap().ai();
-                                        tx.send((nx, ny)).expect("Can not send data");
-                                    });
+                                    {
+                                        tokio::task::spawn(async move {
+                                            let (nx, ny) = ai.lock().unwrap().ai();
+                                            tx.send((nx, ny)).expect("Can not send data");
+                                        });
+                                    }
                                 } else {
                                     self.state = AppState::Settlement;
                                 }
@@ -207,7 +211,7 @@ impl eframe::App for GobangApp {
                             painter.circle_stroke(
                                 center,
                                 (grid_size / 3) as f32,
-                                egui::Stroke::new(2.0, egui::Color32::BLUE),
+                                egui::Stroke::new(2.0, egui::Color32::RED),
                             );
                         }
                     }
@@ -217,7 +221,7 @@ impl eframe::App for GobangApp {
                 painter.rect_filled(
                     ui.clip_rect(),
                     0.0,
-                    egui::Color32::from_rgba_unmultiplied(0, 0, 0, 150),
+                    egui::Color32::from_rgba_unmultiplied(0, 0, 0, 50),
                 );
                 painter.text(
                     Pos2::new(board_e_size / 2.0, board_e_size / 2.0),

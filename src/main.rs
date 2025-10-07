@@ -17,6 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let board_e_size = *BOARD_E_SIZE.lock().unwrap();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([board_e_size, board_e_size]),
+
         ..Default::default()
     };
     eframe::run_native(
