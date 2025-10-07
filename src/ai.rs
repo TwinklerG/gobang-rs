@@ -1,4 +1,8 @@
-use std::collections::HashSet;
+use log::info;
+use std::{
+    collections::{HashMap, HashSet},
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 const DEPTH: usize = 2;
 const COLUMN: usize = 15;
@@ -26,9 +30,12 @@ pub struct AI {
 
     cut_cnt: usize,
     search_cnt: usize,
+    cache_hit: usize,
 
     pub state: GameState,
     pub depth: usize,
+
+    evaluation_cache: HashMap<u64, i32>,
 }
 
 const SHAPE_SCORE: &[(i32, &[usize])] = &[
@@ -65,15 +72,22 @@ impl AI {
             next_step: (0, 0),
             search_cnt: 0,
             cut_cnt: 0,
+            cache_hit: 0,
             state: GameState::Idle,
             depth: DEPTH,
+            evaluation_cache: HashMap::new(),
         }
     }
 
     pub fn ai(&mut self) -> (usize, usize) {
         self.cut_cnt = 0;
         self.search_cnt = 0;
+        self.cache_hit = 0;
         self.negamax(true, self.depth, i32::MIN >> 1, i32::MAX >> 1);
+        info!(
+            "search count: {}; cut cnt: {}; cache hit: {}",
+            self.search_cnt, self.cut_cnt, self.cache_hit
+        );
         self.ai_steps.push(self.next_step);
         self.ai_steps_st.insert(self.next_step);
         self.all_steps.push(self.next_step);
@@ -105,7 +119,6 @@ impl AI {
             .copied()
             .collect();
         self.order(&mut blank_steps);
-        // println!("blank steps size {}", blank_steps.len());
         for (tx, ty) in blank_steps {
             self.search_cnt += 1;
 
@@ -147,7 +160,7 @@ impl AI {
         alpha
     }
 
-    fn evalution(&self, is_ai: bool) -> i32 {
+    fn evalution(&mut self, is_ai: bool) -> i32 {
         let my_list = if is_ai {
             &self.ai_steps
         } else {
@@ -158,6 +171,31 @@ impl AI {
         } else {
             &self.ai_steps
         };
+        let mut hash = 0;
+        if self.depth > 2 {
+            let my_st = if is_ai {
+                &self.ai_steps_st
+            } else {
+                &self.human_steps_st
+            };
+            let enemy_st = if is_ai {
+                &self.human_steps_st
+            } else {
+                &self.ai_steps_st
+            };
+            let mut hasher = DefaultHasher::new();
+            for item in my_st {
+                item.hash(&mut hasher);
+            }
+            for item in enemy_st {
+                item.hash(&mut hasher);
+            }
+            hash = hasher.finish();
+            if let Some(score) = self.evaluation_cache.get(&hash) {
+                self.cache_hit += 1;
+                return *score;
+            }
+        }
         let mut my_score_all_arr: TypeScoreAllArr = Vec::new();
         let mut my_score = 0;
         for (x, y) in my_list {
@@ -223,7 +261,9 @@ impl AI {
                 &mut enemy_score_all_arr,
             );
         }
-        (my_score as f32 - enemy_score as f32 * 0.1) as i32
+        let ret = (my_score as f32 - enemy_score as f32 * 0.1) as i32;
+        self.evaluation_cache.insert(hash, ret);
+        ret
     }
 
     fn cal_score(
@@ -303,6 +343,8 @@ impl AI {
                 }
             }
         }
+
+        score_all_arr.push(max_score_shape.clone());
 
         add_score + max_score_shape.0
     }
