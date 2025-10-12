@@ -2,7 +2,7 @@
 
 Yet another gobang game based on egui(rust), supporting multiple platforms, including desktop and web.
 
-Main Algorithms: **game tree**, **minmax**, **alpha-beta pruning**, **zobrist**.
+Main Algorithms: **game tree**, **negamax**, **alpha-beta pruning**, **zobrist**.
 
 ## 📷 Screenshots
 
@@ -29,7 +29,7 @@ A Rust environment is necessary. [Rustup](https://rust-lang.org/learn/get-starte
 ### Desktop
 
 ```shell
-cargo run --release
+cargo run --release --target aarch64-apple-darwin # MacOS
 ```
 
 ### WebAssembly
