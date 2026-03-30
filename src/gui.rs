@@ -177,14 +177,14 @@ impl eframe::App for GobangApp {
                     *self = GobangApp::new();
                 }
             }
-            if let Some(rx) = &self.rx {
-                if let Ok((nx, ny)) = rx.try_recv() {
-                    self.board[nx][ny] = if self.role_black { 2 } else { 1 };
-                    self.state = AppState::Gaming;
-                    self.last_step = Some((nx, ny));
-                    if self.ai.lock().unwrap().is_game_over() {
-                        self.state = AppState::Settlement;
-                    }
+            if let Some(rx) = &self.rx
+                && let Ok((nx, ny)) = rx.try_recv()
+            {
+                self.board[nx][ny] = if self.role_black { 2 } else { 1 };
+                self.state = AppState::Gaming;
+                self.last_step = Some((nx, ny));
+                if self.ai.lock().unwrap().is_game_over() {
+                    self.state = AppState::Settlement;
                 }
             }
             for x in 0..BOARD_SIZE {
@@ -206,14 +206,15 @@ impl eframe::App for GobangApp {
                             egui::Stroke::new(1.0, egui::Color32::BLACK),
                         );
                     }
-                    if let Some((cx, cy)) = self.last_step {
-                        if cx == x && cy == y {
-                            painter.circle_stroke(
-                                center,
-                                (grid_size / 3) as f32,
-                                egui::Stroke::new(2.0, egui::Color32::RED),
-                            );
-                        }
+                    if let Some((cx, cy)) = self.last_step
+                        && cx == x
+                        && cy == y
+                    {
+                        painter.circle_stroke(
+                            center,
+                            (grid_size / 3) as f32,
+                            egui::Stroke::new(2.0, egui::Color32::RED),
+                        );
                     }
                 }
             }
