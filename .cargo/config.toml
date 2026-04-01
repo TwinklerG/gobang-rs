@@ -2,4 +2,4 @@
 target = "wasm32-unknown-unknown"
 # target = "aarch64-apple-darwin"
 [target.wasm32-unknown-unknown]
-rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
+# rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""] # unnecessary any more, referring to https://docs.rs/getrandom/latest/getrandom/#webassembly-support
